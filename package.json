@@ -5,13 +5,20 @@
   "main": "index.js",
   "scripts": {
     "start": "tsx ./src/index.ts",
-    "build": "tsc"
+    "build": "tsc",
+    "generate": "drizzle-kit generate",
+    "migrate": "drizzle-kit migrate"
   },
   "keywords": [],
   "type": "module",
   "devDependencies": {
     "@types/node": "^26.6.6",
+    "drizzle-kit": "^0.31.11",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.4",
+    "postgres": "^4.0.0"
   }
 }
