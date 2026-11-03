@@ -7,7 +7,10 @@ import {
 } from "./db/queries/users.js";
 import { fetchFeed } from "./rss.js";
 import type { Feed, User } from "./db/schema.js";
-import { createFeed } from "./db/queries/feeds.js";
+import {
+  createFeed,
+  getFeeds,
+} from "./db/queries/feeds.js";
 
 type CommandHandler = (
   cmdName: string,
@@ -156,6 +159,29 @@ async function handlerAddFeed(
   printFeed(feed, user);
 }
 
+async function handlerFeeds(
+  cmdName: string,
+  ...args: string[]
+): Promise<void> {
+  if (args.length !== 0) {
+    throw new Error("The feeds command does not accept arguments");
+  }
+
+  const feeds = await getFeeds();
+
+  if (feeds.length === 0) {
+    console.log("No feeds found.");
+    return;
+  }
+
+  for (const feed of feeds) {
+    console.log(`Name: ${feed.name}`);
+    console.log(`URL: ${feed.url}`);
+    console.log(`User: ${feed.userName}`);
+    console.log("--------------------");
+  }
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
 
@@ -175,6 +201,7 @@ async function main(): Promise<void> {
   registerCommand(registry, "users", handlerUsers);
   registerCommand(registry, "agg", handlerAgg);
   registerCommand(registry, "addfeed", handlerAddFeed);
+  registerCommand(registry, "feeds", handlerFeeds);
 
   try {
     await runCommand(registry, cmdName, ...cmdArgs);
