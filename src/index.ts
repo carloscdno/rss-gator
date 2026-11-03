@@ -6,6 +6,8 @@ import {
   getUsers,
 } from "./db/queries/users.js";
 import { fetchFeed } from "./rss.js";
+import type { Feed, User } from "./db/schema.js";
+import { createFeed } from "./db/queries/feeds.js";
 
 type CommandHandler = (
   cmdName: string,
@@ -117,6 +119,43 @@ async function handlerAgg(
   console.log(JSON.stringify(feed, null, 2));
 }
 
+function printFeed(feed: Feed, user: User): void {
+  console.log("Feed created successfully!");
+  console.log(`ID: ${feed.id}`);
+  console.log(`Name: ${feed.name}`);
+  console.log(`URL: ${feed.url}`);
+  console.log(`User: ${user.name}`);
+  console.log(`User ID: ${feed.userId}`);
+  console.log(`Created at: ${feed.createdAt}`);
+}
+
+async function handlerAddFeed(
+  cmdName: string,
+  ...args: string[]
+): Promise<void> {
+  if (args.length !== 2) {
+    throw new Error("Usage: addfeed <name> <url>");
+  }
+
+  const config = readConfig();
+
+  if (!config.currentUserName) {
+    throw new Error("No user is currently logged in");
+  }
+
+  const user = await getUserByName(config.currentUserName);
+
+  if (!user) {
+    throw new Error(`User ${config.currentUserName} not found`);
+  }
+
+  const [name, url] = args;
+
+  const feed = await createFeed(name, url, user.id);
+
+  printFeed(feed, user);
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
 
@@ -135,6 +174,7 @@ async function main(): Promise<void> {
   registerCommand(registry, "reset", handlerReset);
   registerCommand(registry, "users", handlerUsers);
   registerCommand(registry, "agg", handlerAgg);
+  registerCommand(registry, "addfeed", handlerAddFeed);
 
   try {
     await runCommand(registry, cmdName, ...cmdArgs);
