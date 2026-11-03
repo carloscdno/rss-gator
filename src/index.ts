@@ -3,6 +3,7 @@ import {
   createUser,
   getUserByName,
   deleteAllUsers,
+  getUsers,
 } from "./db/queries/users.js";
 
 type CommandHandler = (
@@ -90,6 +91,22 @@ async function handlerReset(
   console.log("Database reset successfully!");
 }
 
+async function handlerUsers(
+  cmdName: string,
+  ...args: string[]
+): Promise<void> {
+  const users = await getUsers();
+  const config = readConfig();
+
+  for (const user of users) {
+    const current = user.name === config.currentUserName
+      ? " (current)"
+      : "";
+
+    console.log(`* ${user.name}${current}`);
+  }
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
 
@@ -106,6 +123,7 @@ async function main(): Promise<void> {
   registerCommand(registry, "login", handlerLogin);
   registerCommand(registry, "register", handlerRegister);
   registerCommand(registry, "reset", handlerReset);
+  registerCommand(registry, "users", handlerUsers);
 
   try {
     await runCommand(registry, cmdName, ...cmdArgs);
