@@ -2,6 +2,7 @@ import { readConfig, setUser } from "./config.js";
 import {
   createUser,
   getUserByName,
+  deleteAllUsers,
 } from "./db/queries/users.js";
 
 type CommandHandler = (
@@ -80,6 +81,15 @@ async function handlerRegister(
   console.log(user);
 }
 
+async function handlerReset(
+  cmdName: string,
+  ...args: string[]
+): Promise<void> {
+  await deleteAllUsers();
+
+  console.log("Database reset successfully!");
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
 
@@ -95,6 +105,7 @@ async function main(): Promise<void> {
 
   registerCommand(registry, "login", handlerLogin);
   registerCommand(registry, "register", handlerRegister);
+  registerCommand(registry, "reset", handlerReset);
 
   try {
     await runCommand(registry, cmdName, ...cmdArgs);
