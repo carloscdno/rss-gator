@@ -1,6 +1,13 @@
 import { readConfig, setUser } from "./config.js";
+import {
+  createUser,
+  getUserByName,
+} from "./db/queries/users.js";
 
-type CommandHandler = (cmdName: string, ...args: string[]) => void;
+type CommandHandler = (
+  cmdName: string,
+  ...args: string[]
+) => Promise<void>;
 
 type CommandsRegistry = Record<string, CommandHandler>;
 
@@ -12,32 +19,68 @@ function registerCommand(
   registry[cmdName] = handler;
 }
 
-function runCommand(
+async function runCommand(
   registry: CommandsRegistry,
   cmdName: string,
   ...args: string[]
-): void {
+): Promise<void> {
   const handler = registry[cmdName];
 
   if (!handler) {
     throw new Error(`Unknown command: ${cmdName}`);
   }
 
-  handler(cmdName, ...args);
+  await handler(cmdName, ...args);
 }
 
-function handlerLogin(cmdName: string, ...args: string[]): void {
+async function handlerLogin(
+  cmdName: string,
+  ...args: string[]
+): Promise<void> {
   if (args.length === 0) {
     throw new Error("Username is required");
   }
 
-  const config = readConfig();
-  setUser(config, args[0]);
+  const name = args[0];
 
-  console.log(`User set to ${args[0]}`);
+  const user = await getUserByName(name);
+
+  if (!user) {
+    throw new Error(`User ${name} does not exist`);
+  }
+
+  const config = readConfig();
+  setUser(config, name);
+
+  console.log(`User set to ${name}`);
 }
 
-function main(): void {
+async function handlerRegister(
+  cmdName: string,
+  ...args: string[]
+): Promise<void> {
+  if (args.length === 0) {
+    throw new Error("Username is required");
+  }
+
+  const name = args[0];
+
+  const existingUser = await getUserByName(name);
+
+  if (existingUser) {
+    throw new Error(`User ${name} already exists`);
+  }
+
+  const user = await createUser(name);
+
+  const config = readConfig();
+  setUser(config, name);
+
+  console.log(`User ${name} was created successfully!`);
+  console.log(user);
+}
+
+async function main(): Promise<void> {
   const args = process.argv.slice(2);
 
   if (args.length === 0) {
@@ -51,13 +94,15 @@ function main(): void {
   const registry: CommandsRegistry = {};
 
   registerCommand(registry, "login", handlerLogin);
+  registerCommand(registry, "register", handlerRegister);
 
   try {
-    runCommand(registry, cmdName, ...cmdArgs);
+    await runCommand(registry, cmdName, ...cmdArgs);
   } catch (err) {
     console.error(err);
     process.exit(1);
   }
+  process.exit(0);
 }
 
 main();
