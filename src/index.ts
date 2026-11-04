@@ -15,7 +15,33 @@ type CommandHandler = (
   ...args: string[]
 ) => Promise<void>;
 
+type UserCommandHandler = (
+  cmdName: string,
+  user: User,
+  ...args: string[]
+) => Promise<void>;
+
 type CommandsRegistry = Record<string, CommandHandler>;
+
+function middlewareLoggedIn(
+  handler: UserCommandHandler,
+): CommandHandler {
+  return async (cmdName: string, ...args: string[]): Promise<void> => {
+    const config = readConfig();
+
+    if (!config.currentUserName) {
+      throw new Error("No user is currently logged in");
+    }
+
+    const user = await getUserByName(config.currentUserName);
+
+    if (!user) {
+      throw new Error(`User ${config.currentUserName} not found`);
+    }
+
+    await handler(cmdName, user, ...args);
+  };
+}
 
 function registerCommand(
   registry: CommandsRegistry,
@@ -132,22 +158,11 @@ function printFeed(feed: Feed, user: User): void {
 
 async function handlerAddFeed(
   cmdName: string,
+  user: User,
   ...args: string[]
 ): Promise<void> {
   if (args.length !== 2) {
     throw new Error("Usage: addfeed <name> <url>");
-  }
-
-  const config = readConfig();
-
-  if (!config.currentUserName) {
-    throw new Error("No user is currently logged in");
-  }
-
-  const user = await getUserByName(config.currentUserName);
-
-  if (!user) {
-    throw new Error(`User ${config.currentUserName} not found`);
   }
 
   const [name, url] = args;
@@ -191,22 +206,11 @@ function printFeedFollow(feedFollow: {
 
 async function handlerFollow(
   cmdName: string,
+  user: User,
   ...args: string[]
 ): Promise<void> {
   if (args.length !== 1) {
     throw new Error("Usage: follow <url>");
-  }
-
-  const config = readConfig();
-
-  if (!config.currentUserName) {
-    throw new Error("No user is currently logged in");
-  }
-
-  const user = await getUserByName(config.currentUserName);
-
-  if (!user) {
-    throw new Error(`User ${config.currentUserName} not found`);
   }
 
   const feed = await getFeedByUrl(args[0]);
@@ -222,22 +226,11 @@ async function handlerFollow(
 
 async function handlerFollowing(
   cmdName: string,
+  user: User,
   ...args: string[]
 ): Promise<void> {
   if (args.length !== 0) {
     throw new Error("The following command does not accept arguments");
-  }
-
-  const config = readConfig();
-
-  if (!config.currentUserName) {
-    throw new Error("No user is currently logged in");
-  }
-
-  const user = await getUserByName(config.currentUserName);
-
-  if (!user) {
-    throw new Error(`User ${config.currentUserName} not found`);
   }
 
   const feedFollows = await getFeedFollowsForUser(user.id);
@@ -272,10 +265,10 @@ async function main(): Promise<void> {
   registerCommand(registry, "reset", handlerReset);
   registerCommand(registry, "users", handlerUsers);
   registerCommand(registry, "agg", handlerAgg);
-  registerCommand(registry, "addfeed", handlerAddFeed);
+  registerCommand(registry, "addfeed", middlewareLoggedIn(handlerAddFeed));
   registerCommand(registry, "feeds", handlerFeeds);
-  registerCommand(registry, "follow", handlerFollow);
-  registerCommand(registry, "following", handlerFollowing);
+  registerCommand(registry, "follow", middlewareLoggedIn(handlerFollow));
+  registerCommand(registry, "following", middlewareLoggedIn(handlerFollowing));
 
   try {
     await runCommand(registry, cmdName, ...cmdArgs);
