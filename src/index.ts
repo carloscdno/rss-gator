@@ -1,16 +1,14 @@
 import { readConfig, setUser } from "./config.js";
 import {
-  createUser,
-  getUserByName,
-  deleteAllUsers,
-  getUsers,
-} from "./db/queries/users.js";
-import { fetchFeed } from "./rss.js";
-import type { Feed, User } from "./db/schema.js";
-import {
   createFeed,
   getFeeds,
+  getFeedByUrl,
+  createFeedFollow,
+  getFeedFollowsForUser,
 } from "./db/queries/feeds.js";
+import { fetchFeed } from "./rss.js";
+import type { Feed, User } from "./db/schema.js";
+import { createUser, deleteAllUsers, getUserByName, getUsers } from "./db/queries/users.js";
 
 type CommandHandler = (
   cmdName: string,
@@ -156,7 +154,9 @@ async function handlerAddFeed(
 
   const feed = await createFeed(name, url, user.id);
 
-  printFeed(feed, user);
+  const feedFollow = await createFeedFollow(user.id, feed.id);
+
+  printFeedFollow(feedFollow);
 }
 
 async function handlerFeeds(
@@ -182,6 +182,78 @@ async function handlerFeeds(
   }
 }
 
+function printFeedFollow(feedFollow: {
+  feedName: string;
+  userName: string;
+}): void {
+  console.log(`${feedFollow.userName} is following ${feedFollow.feedName}`);
+}
+
+async function handlerFollow(
+  cmdName: string,
+  ...args: string[]
+): Promise<void> {
+  if (args.length !== 1) {
+    throw new Error("Usage: follow <url>");
+  }
+
+  const config = readConfig();
+
+  if (!config.currentUserName) {
+    throw new Error("No user is currently logged in");
+  }
+
+  const user = await getUserByName(config.currentUserName);
+
+  if (!user) {
+    throw new Error(`User ${config.currentUserName} not found`);
+  }
+
+  const feed = await getFeedByUrl(args[0]);
+
+  if (!feed) {
+    throw new Error(`Feed with URL ${args[0]} not found`);
+  }
+
+  const feedFollow = await createFeedFollow(user.id, feed.id);
+
+  printFeedFollow(feedFollow);
+}
+
+async function handlerFollowing(
+  cmdName: string,
+  ...args: string[]
+): Promise<void> {
+  if (args.length !== 0) {
+    throw new Error("The following command does not accept arguments");
+  }
+
+  const config = readConfig();
+
+  if (!config.currentUserName) {
+    throw new Error("No user is currently logged in");
+  }
+
+  const user = await getUserByName(config.currentUserName);
+
+  if (!user) {
+    throw new Error(`User ${config.currentUserName} not found`);
+  }
+
+  const feedFollows = await getFeedFollowsForUser(user.id);
+
+  if (feedFollows.length === 0) {
+    console.log(`${user.name} is not following any feeds.`);
+    return;
+  }
+
+  console.log(`${user.name} is following:`);
+
+  for (const feedFollow of feedFollows) {
+    console.log(`- ${feedFollow.feedName}`);
+  }
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
 
@@ -202,6 +274,8 @@ async function main(): Promise<void> {
   registerCommand(registry, "agg", handlerAgg);
   registerCommand(registry, "addfeed", handlerAddFeed);
   registerCommand(registry, "feeds", handlerFeeds);
+  registerCommand(registry, "follow", handlerFollow);
+  registerCommand(registry, "following", handlerFollowing);
 
   try {
     await runCommand(registry, cmdName, ...cmdArgs);
