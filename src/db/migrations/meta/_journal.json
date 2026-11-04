@@ -29,6 +29,13 @@
       "when": 1793757985050,
       "tag": "0003_simple_tarantula",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793758553481,
+      "tag": "0004_great_jackpot",
+      "breakpoints": true
     }
   ]
 }

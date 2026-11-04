@@ -6,14 +6,13 @@ import {
   createFeedFollow,
   getFeedFollowsForUser,
   deleteFeedFollow,
-} from "./db/queries/feeds.js";
-import { fetchFeed } from "./rss.js";
-import type { Feed, User } from "./db/schema.js";
-import {
   getNextFeedToFetch,
   markFeedFetched,
 } from "./db/queries/feeds.js";
+import { fetchFeed, parsePublishedAt } from "./rss.js";
+import type { User } from "./db/schema.js";
 import { createUser, deleteAllUsers, getUserByName, getUsers } from "./db/queries/users.js";
+import { createPost, getPostsForUser } from "./db/queries/posts.js";
 
 type CommandHandler = (
   cmdName: string,
@@ -71,7 +70,7 @@ async function runCommand(
 }
 
 async function handlerLogin(
-  cmdName: string,
+  _cmdName: string,
   ...args: string[]
 ): Promise<void> {
   if (args.length === 0) {
@@ -93,7 +92,7 @@ async function handlerLogin(
 }
 
 async function handlerRegister(
-  cmdName: string,
+  _cmdName: string,
   ...args: string[]
 ): Promise<void> {
   if (args.length === 0) {
@@ -118,8 +117,8 @@ async function handlerRegister(
 }
 
 async function handlerReset(
-  cmdName: string,
-  ...args: string[]
+  _cmdName: string,
+  ..._args: string[]
 ): Promise<void> {
   await deleteAllUsers();
 
@@ -127,8 +126,8 @@ async function handlerReset(
 }
 
 async function handlerUsers(
-  cmdName: string,
-  ...args: string[]
+  _cmdName: string,
+  ..._args: string[]
 ): Promise<void> {
   const users = await getUsers();
   const config = readConfig();
@@ -143,7 +142,7 @@ async function handlerUsers(
 }
 
 async function handlerAgg(
-  cmdName: string,
+  _cmdName: string,
   ...args: string[]
 ): Promise<void> {
   if (args.length !== 1) {
@@ -179,18 +178,8 @@ async function handlerAgg(
   });
 }
 
-function printFeed(feed: Feed, user: User): void {
-  console.log("Feed created successfully!");
-  console.log(`ID: ${feed.id}`);
-  console.log(`Name: ${feed.name}`);
-  console.log(`URL: ${feed.url}`);
-  console.log(`User: ${user.name}`);
-  console.log(`User ID: ${feed.userId}`);
-  console.log(`Created at: ${feed.createdAt}`);
-}
-
 async function handlerAddFeed(
-  cmdName: string,
+  _cmdName: string,
   user: User,
   ...args: string[]
 ): Promise<void> {
@@ -208,7 +197,7 @@ async function handlerAddFeed(
 }
 
 async function handlerFeeds(
-  cmdName: string,
+  _cmdName: string,
   ...args: string[]
 ): Promise<void> {
   if (args.length !== 0) {
@@ -238,7 +227,7 @@ function printFeedFollow(feedFollow: {
 }
 
 async function handlerFollow(
-  cmdName: string,
+  _cmdName: string,
   user: User,
   ...args: string[]
 ): Promise<void> {
@@ -258,7 +247,7 @@ async function handlerFollow(
 }
 
 async function handlerFollowing(
-  cmdName: string,
+  _cmdName: string,
   user: User,
   ...args: string[]
 ): Promise<void> {
@@ -281,7 +270,7 @@ async function handlerFollowing(
 }
 
 async function handlerUnfollow(
-  cmdName: string,
+  _cmdName: string,
   user: User,
   ...args: string[]
 ): Promise<void> {
@@ -315,7 +304,17 @@ async function scrapeFeeds(): Promise<void> {
   await markFeedFetched(feed.id);
 
   for (const item of rssFeed.channel.item) {
-    console.log(`Title: ${item.title}`);
+    const publishedAt = parsePublishedAt(item.pubDate);
+
+    await createPost({
+      title: item.title,
+      url: item.link,
+      description: item.description ?? null,
+      publishedAt,
+      feedId: feed.id,
+    });
+
+    console.log(`Saved post: ${item.title}`);
   }
 }
 
@@ -367,6 +366,40 @@ function formatDuration(milliseconds: number): string {
   return `${seconds}s`;
 }
 
+async function handlerBrowse(
+  cmdName: string,
+  user: User,
+  ...args: string[]
+): Promise<void> {
+  if (args.length > 1) {
+    throw new Error("Usage: browse [limit]");
+  }
+
+  const limit = args.length === 0 ? 2 : Number(args[0]);
+
+  if (!Number.isInteger(limit) || limit <= 0) {
+    throw new Error("Limit must be a positive integer.");
+  }
+
+  const posts = await getPostsForUser(user.id, limit);
+
+  if (posts.length === 0) {
+    console.log("No posts found.");
+    return;
+  }
+
+  for (const post of posts) {
+    console.log(`Title: ${post.title}`);
+    console.log(`URL: ${post.url}`);
+    console.log(`Feed: ${post.feedName}`);
+    console.log(
+      `Published: ${post.publishedAt?.toISOString() ?? "Unknown"}`,
+    );
+    console.log(`Description: ${post.description ?? "No description"}`);
+    console.log("-----------------------------------");
+  }
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
 
@@ -390,6 +423,7 @@ async function main(): Promise<void> {
   registerCommand(registry, "follow", middlewareLoggedIn(handlerFollow));
   registerCommand(registry, "following", middlewareLoggedIn(handlerFollowing));
   registerCommand(registry, "unfollow", middlewareLoggedIn(handlerUnfollow));
+  registerCommand(registry, "browse", middlewareLoggedIn(handlerBrowse));
 
   try {
     await runCommand(registry, cmdName, ...cmdArgs);
