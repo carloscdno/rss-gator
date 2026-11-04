@@ -9,6 +9,10 @@ import {
 } from "./db/queries/feeds.js";
 import { fetchFeed } from "./rss.js";
 import type { Feed, User } from "./db/schema.js";
+import {
+  getNextFeedToFetch,
+  markFeedFetched,
+} from "./db/queries/feeds.js";
 import { createUser, deleteAllUsers, getUserByName, getUsers } from "./db/queries/users.js";
 
 type CommandHandler = (
@@ -142,9 +146,37 @@ async function handlerAgg(
   cmdName: string,
   ...args: string[]
 ): Promise<void> {
-  const feed = await fetchFeed("https://www.wagslane.dev/index.xml");
+  if (args.length !== 1) {
+    throw new Error("Usage: agg <time_between_reqs>");
+  }
 
-  console.log(JSON.stringify(feed, null, 2));
+  const timeBetweenRequests = parseDuration(args[0]);
+
+  if (timeBetweenRequests <= 0) {
+    throw new Error("The duration must be greater than zero.");
+  }
+
+  console.log(
+    `Collecting feeds every ${formatDuration(timeBetweenRequests)}`,
+  );
+
+  function handleError(error: unknown): void {
+    console.error("Error scraping feeds:", error);
+  }
+
+  scrapeFeeds().catch(handleError);
+
+  const interval = setInterval(() => {
+    scrapeFeeds().catch(handleError);
+  }, timeBetweenRequests);
+
+  await new Promise<void>((resolve) => {
+    process.on("SIGINT", () => {
+      console.log("\nShutting down feed aggregator...");
+      clearInterval(interval);
+      resolve();
+    });
+  });
 }
 
 function printFeed(feed: Feed, user: User): void {
@@ -266,6 +298,73 @@ async function handlerUnfollow(
   await deleteFeedFollow(user.id, feed.id);
 
   console.log(`${user.name} unfollowed ${feed.name}`);
+}
+
+async function scrapeFeeds(): Promise<void> {
+  const feed = await getNextFeedToFetch();
+
+  if (!feed) {
+    console.log("No feeds available to scrape.");
+    return;
+  }
+
+  console.log(`Fetching feed: ${feed.name} (${feed.url})`);
+
+  const rssFeed = await fetchFeed(feed.url);
+
+  await markFeedFetched(feed.id);
+
+  for (const item of rssFeed.channel.item) {
+    console.log(`Title: ${item.title}`);
+  }
+}
+
+function parseDuration(durationStr: string): number {
+  const regex = /^(\d+)(ms|s|m|h)$/;
+  const match = durationStr.match(regex);
+
+  if (!match) {
+    throw new Error(
+      "Invalid duration. Use a format like 500ms, 1s, 1m, or 1h.",
+    );
+  }
+
+  const amount = Number(match[1]);
+  const unit = match[2];
+
+  switch (unit) {
+    case "ms":
+      return amount;
+    case "s":
+      return amount * 1000;
+    case "m":
+      return amount * 60 * 1000;
+    case "h":
+      return amount * 60 * 60 * 1000;
+    default:
+      throw new Error("Unsupported duration unit.");
+  }
+}
+
+function formatDuration(milliseconds: number): string {
+  if (milliseconds < 1000) {
+    return `${milliseconds}ms`;
+  }
+
+  const totalSeconds = Math.floor(milliseconds / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}h${minutes}m${seconds}s`;
+  }
+
+  if (minutes > 0) {
+    return `${minutes}m${seconds}s`;
+  }
+
+  return `${seconds}s`;
 }
 
 async function main(): Promise<void> {

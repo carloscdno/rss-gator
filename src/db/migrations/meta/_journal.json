@@ -22,6 +22,13 @@
       "when": 1793756554481,
       "tag": "0002_parallel_warlock",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793757985050,
+      "tag": "0003_simple_tarantula",
+      "breakpoints": true
     }
   ]
 }
