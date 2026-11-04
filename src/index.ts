@@ -5,6 +5,7 @@ import {
   getFeedByUrl,
   createFeedFollow,
   getFeedFollowsForUser,
+  deleteFeedFollow,
 } from "./db/queries/feeds.js";
 import { fetchFeed } from "./rss.js";
 import type { Feed, User } from "./db/schema.js";
@@ -247,6 +248,26 @@ async function handlerFollowing(
   }
 }
 
+async function handlerUnfollow(
+  cmdName: string,
+  user: User,
+  ...args: string[]
+): Promise<void> {
+  if (args.length !== 1) {
+    throw new Error("Usage: unfollow <url>");
+  }
+
+  const feed = await getFeedByUrl(args[0]);
+
+  if (!feed) {
+    throw new Error(`Feed with URL ${args[0]} not found`);
+  }
+
+  await deleteFeedFollow(user.id, feed.id);
+
+  console.log(`${user.name} unfollowed ${feed.name}`);
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
 
@@ -269,6 +290,7 @@ async function main(): Promise<void> {
   registerCommand(registry, "feeds", handlerFeeds);
   registerCommand(registry, "follow", middlewareLoggedIn(handlerFollow));
   registerCommand(registry, "following", middlewareLoggedIn(handlerFollowing));
+  registerCommand(registry, "unfollow", middlewareLoggedIn(handlerUnfollow));
 
   try {
     await runCommand(registry, cmdName, ...cmdArgs);
